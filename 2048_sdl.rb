@@ -25,6 +25,8 @@ require 'color'
 
 include Rubygame
 
+BLKSIZE = 100
+
 class Game
 	attr_reader :board_size, :board
 
@@ -40,30 +42,55 @@ class Game
 		south: :neg,
 		east:  :neg
 	}
-	DISPLAY = [ "[    ]",
-	            "[   2]",
-					"[   4]",
-					"[   8]",
-					"[  16]",
-					"[  32]",
-					"[  64]",
-					"[ 128]",
-					"[ 256]",
-					"[ 512]",
-					"[1024]",
-					"[2048]",
-					"[4096]",
-					"[8192]" ]
+	KEY_TRANSLATE = {
+		left:  :west,
+		right: :east,
+		up:    :north,
+		down:  :south
+	}
 
 	def initialize (options)
-		@board_size = options[:board_size] # 4
-		@screen = options[:screen] # Rubygame::Screen main
-		@blocks = options[:blocks] # Rubygame::Surface array
-		@rect = options[:rect] # Rubygame::Rectangle to modify for blitting
-		@event_queue = options[:eq]
+		@board_size = options[:board_size] || 4
+
+		TTF.setup
+		$font = TTF.new "/usr/share/fonts/TTF/Monaco_Linux.ttf", 36
+
+		@screen = Screen.open [400, 410]
+		@screen.title = "2048"
+
+		blkcnt = @board_size**2-1
+		@blocks = Array.new(blkcnt) { Surface.new [BLKSIZE, BLKSIZE] }
+		@colors = Array.new(blkcnt)
+		@empty_surface = Surface.new [400, 16]
+
+		@blocks.each_with_index do |sfc, i|
+			#hue = 360.0 - i.to_f / blkcnt * 360.0
+			hue = (i * 67) % 360
+			amt = i.to_f/blkcnt
+			c = Color::HSL.new(  hue,							# kleur
+										(i==0)?10:80+10.0*amt,	# hoeveelheid kleur
+										50+(25.0*amt)).to_rgb	# zwart naar wit
+			color = [ c.red, c.green, c.blue ]
+			@colors[i] = color
+			sfc.draw_box_s [10, 10], [90, 90], color
+
+			if i > 0
+				txt = $font.render_utf8 (2**i).to_s, true, [0, 0, 0]
+				txtrct = txt.make_rect
+				txtrct.topleft = [ (sfc.width - txtrct.width) / 2, (sfc.height - txtrct.height) / 2 ]
+				txt.blit sfc, txtrct
+			end
+		end
+		@rect = @blocks[0].make_rect
+
+		@event_queue = EventQueue.new
+		@event_queue.enable_new_style_events
+
+		@empty_spots = Array.new
+		@stat_block = nil
 		@board = Array.new(@board_size**2) { 0 }
 		@moves = 0
-		@stats_sorted = [ "   2", [ 1, 1 ] ]
+		@stats_sorted = [ [ "   2", [ 1, 1 ] ] ]
 	end
 
 	def set_x_y (x, y, val)
@@ -98,48 +125,52 @@ class Game
 	end
 
 	def show_board
+		# draw stats
+		@empty_surface.blit @screen, @empty_surface.make_rect
+		@stats_sorted.each do |a|
+			tileno, amt = a[1][0], a[1][1]
+			@stat_block = Surface.new [22, amt*2]
+			@stat_block.draw_box_s [0, 0], [22, amt*2], @colors[tileno]
+			rect = @stat_block.make_rect
+			rect.topleft = [ 2+25*tileno, 2 ]
+			@stat_block.blit @screen, rect
+		end
+
+		# draw tiles
 		bs = @board_size
 		(1..bs).each do |y|
 			(1..bs).each do |x|
 				x0, y0 = x-1, y-1
-				rct = @rect
+				rect = @rect
 				flat = y0*@board_size+x0
-				rct.topleft = [ BLKSIZE*(flat % @board_size), 10+BLKSIZE*(flat / @board_size) ]
-				@blocks[get_board(y, x)].blit @screen, rct
+				rect.topleft = [ BLKSIZE*(flat % @board_size), 10+BLKSIZE*(flat / @board_size) ]
+				@blocks[get_board(y, x)].blit @screen, rect
 			end
 		end
+
 		@screen.flip
 	end
 
 	def generate_new
-		done = false
-		until done
-			place = rand(full_range)
-			if @board[place] == 0
-				@board[place] = 1
-				done = true
-			end
+		@empty_spots.clear
+		@board.each_with_index { |tile, i| @empty_spots.push(i) if tile == 0 }
+		if @empty_spots.length == 0		# game over detection still fails.. need to check if moves can be made
+			return false
+		else
+			place = rand(0..@empty_spots.length-1)
+			@board[@empty_spots[place]] = 1
 		end
+		true
 	end
 
 	def get_input
 		res = nil
 		while event = @event_queue.wait
-			if event.is_a? Rubygame::Events::KeyPressed
-				case event.key
-				when :left
-					res = :west
+			if event.is_a? Events::KeyPressed
+				if KEY_TRANSLATE.has_key? event.key
+					res = KEY_TRANSLATE[event.key]
 					break
-				when :up
-					res = :north
-					break
-				when :down
-					res = :south
-					break
-				when :right
-					res = :east
-					break
-				when :escape
+				elsif event.key == :escape
 					res = nil
 					break
 				end
@@ -236,8 +267,6 @@ class Game
 			end
 		end
 		@stats_sorted = stats.sort_by {|k, v| v[0]}
-		#puts "---"
-		#@stats_sorted.each { |a| puts "%s: %3d %3d" % [a[0], a[1][0], a[1][1]] }
 	end
 
 	def game_over
@@ -257,23 +286,6 @@ class Game
 		@stats_sorted.each { |a| puts "%s: %2d" % [a[0], a[1][1]] }
 	end
 
-	def check_game_over
-		res = true
-		bs = @board_size
-		(1..bs).each do |x|
-			(1..bs-1).each do |y|
-				if get_board(x,y) == 0 or
-					get_board(x,y) == get_board(x,y+1) or
-					get_board(y,x) == get_board(y+1,x) then
-					res = false
-					break
-				end
-			end
-			break if not res
-		end
-		res
-	end
-
 	def launch
 		generate_new
 		while true
@@ -284,11 +296,10 @@ class Game
 				break
 			end
 			if @move_made
-				generate_new
+				if not generate_new
+					break
+				end
 				update_stats
-				#if check_game_over
-					#break
-				#end
 			end
 		end
 		game_over
@@ -299,39 +310,8 @@ end
 if __FILE__ == $0
 	File.open("highscore", "r") { |f| $highscore = f.gets.chomp.to_i }
 
-	TTF.setup
-	$font = TTF.new "/usr/share/fonts/TTF/Monaco_Linux.ttf", 36
 
-	@screen = Screen.open [400, 410]
-	@screen.title = "2048"
-
-	BLKCNT = 15
-	BLKSIZE = 100
-	@blocks = Array.new(BLKCNT) { Surface.new [BLKSIZE, BLKSIZE] }
-
-	@blocks.each_with_index do |sfc, i|
-		#hue = 360.0 - i.to_f / BLKCNT * 360.0
-		hue = (i * 67) % 360
-		amt = i.to_f/BLKCNT
-		c = Color::HSL.new(  hue,							# kleur
-									(i==0)?10:80+10.0*amt,	# hoeveelheid kleur
-									50+(25.0*amt)).to_rgb	# zwart naar wit
-		color = [ c.red, c.green, c.blue ]
-		sfc.draw_box_s [10, 10], [90, 90], color
-
-		if i > 0
-			txt = $font.render_utf8 (2**i).to_s, true, [0, 0, 0]
-			txtrct = txt.make_rect
-			txtrct.topleft = [ (sfc.width - txtrct.width) / 2, (sfc.height - txtrct.height) / 2 ]
-			txt.blit sfc, txtrct
-		end
-	end
-	rct = @blocks[0].make_rect
-
-	@event_queue = EventQueue.new
-	@event_queue.enable_new_style_events
-
-	game = Game.new board_size: 4, screen: @screen, blocks: @blocks, rect: rct, eq: @event_queue
+	game = Game.new board_size: 4
 	puts
 	game.launch
 
