@@ -227,15 +227,27 @@ class Game
 	end
 
 	def game_over
-		puts "Your highest tile was: " + DISPLAY[@board.max]
+		puts "Your highest tile was: " + (2**@board.max).to_s
 		puts "Moves: " + @moves.to_s
 		score = (@board.inject { |sum, x| sum + ((x>0)?(2**x):0) })
-		puts "Your score: " + score.to_s
+		print "Your score: " + score.to_s
 		if score > $highscore
+			puts
 			puts "Personal record!"
 			$highscore = score
 			File.open("highscore", "w") { |f| f.puts score.to_s }
+		else
+			puts "  (highscore %d)" % $highscore
 		end
+		stats = Hash.new (0)
+		@board.each do |tile|
+			if tile > 0
+				tilename = ("%4d" % (2**tile)).to_sym
+				stats.update(tilename => [tile, stats[tilename][1]+1])
+			end
+		end
+		puts "Tiles:"
+		stats.sort_by {|k, v| v[0]}.each { |a| puts "%s: %2d" % [a[0], a[1][1]] }
 	end
 
 	def check_game_over
@@ -292,12 +304,15 @@ if __FILE__ == $0
 	@blocks.each_with_index do |sfc, i|
 		#hue = 360.0 - i.to_f / BLKCNT * 360.0
 		hue = (i * 67) % 360
-		c = Color::HSL.new(hue, (i==0)?10:90, 50+(25.0*(i.to_f/BLKCNT))).to_rgb
+		amt = i.to_f/BLKCNT
+		c = Color::HSL.new(  hue,							# kleur
+									(i==0)?10:80+10.0*amt,	# hoeveelheid kleur
+									50+(25.0*amt)).to_rgb	# zwart naar wit
 		color = [ c.red, c.green, c.blue ]
-		sfc.draw_box [10, 10], [90, 90], color
+		sfc.draw_box_s [10, 10], [90, 90], color
 
 		if i > 0
-			txt = $font.render_utf8 (2**i).to_s, true, color
+			txt = $font.render_utf8 (2**i).to_s, true, [0, 0, 0]
 			txtrct = txt.make_rect
 			txtrct.topleft = [ (sfc.width - txtrct.width) / 2, (sfc.height - txtrct.height) / 2 ]
 			txt.blit sfc, txtrct
