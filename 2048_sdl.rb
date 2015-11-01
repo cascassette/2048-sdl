@@ -63,6 +63,7 @@ class Game
 		@event_queue = options[:eq]
 		@board = Array.new(@board_size**2) { 0 }
 		@moves = 0
+		@stats_sorted = [ "   2", [ 1, 1 ] ]
 	end
 
 	def set_x_y (x, y, val)
@@ -103,7 +104,7 @@ class Game
 				x0, y0 = x-1, y-1
 				rct = @rect
 				flat = y0*@board_size+x0
-				rct.topleft = [ BLKSIZE*(flat % @board_size), BLKSIZE*(flat / @board_size) ]
+				rct.topleft = [ BLKSIZE*(flat % @board_size), 10+BLKSIZE*(flat / @board_size) ]
 				@blocks[get_board(y, x)].blit @screen, rct
 			end
 		end
@@ -226,6 +227,19 @@ class Game
 		@board = untranslate_arrays(workboard, orientation, direction)
 	end
 
+	def update_stats
+		stats = Hash.new (0)
+		@board.each do |tile|
+			if tile > 0
+				tilename = ("%4d" % (2**tile)).to_sym
+				stats.update(tilename => [tile, stats[tilename][1]+1])
+			end
+		end
+		@stats_sorted = stats.sort_by {|k, v| v[0]}
+		#puts "---"
+		#@stats_sorted.each { |a| puts "%s: %3d %3d" % [a[0], a[1][0], a[1][1]] }
+	end
+
 	def game_over
 		puts "Your highest tile was: " + (2**@board.max).to_s
 		puts "Moves: " + @moves.to_s
@@ -239,15 +253,8 @@ class Game
 		else
 			puts "  (highscore %d)" % $highscore
 		end
-		stats = Hash.new (0)
-		@board.each do |tile|
-			if tile > 0
-				tilename = ("%4d" % (2**tile)).to_sym
-				stats.update(tilename => [tile, stats[tilename][1]+1])
-			end
-		end
 		puts "Tiles:"
-		stats.sort_by {|k, v| v[0]}.each { |a| puts "%s: %2d" % [a[0], a[1][1]] }
+		@stats_sorted.each { |a| puts "%s: %2d" % [a[0], a[1][1]] }
 	end
 
 	def check_game_over
@@ -278,6 +285,7 @@ class Game
 			end
 			if @move_made
 				generate_new
+				update_stats
 				#if check_game_over
 					#break
 				#end
@@ -294,7 +302,7 @@ if __FILE__ == $0
 	TTF.setup
 	$font = TTF.new "/usr/share/fonts/TTF/Monaco_Linux.ttf", 36
 
-	@screen = Screen.open [400, 400]
+	@screen = Screen.open [400, 410]
 	@screen.title = "2048"
 
 	BLKCNT = 15
