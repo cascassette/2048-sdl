@@ -62,6 +62,7 @@ class Game
 		@rect = options[:rect] # Rubygame::Rectangle to modify for blitting
 		@event_queue = options[:eq]
 		@board = Array.new(@board_size**2) { 0 }
+		@moves = 0
 	end
 
 	def set_x_y (x, y, val)
@@ -102,7 +103,7 @@ class Game
 				x0, y0 = x-1, y-1
 				rct = @rect
 				flat = y0*@board_size+x0
-				rct.topleft = [ 100*(flat % @board_size), 100*(flat / @board_size) ]
+				rct.topleft = [ BLKSIZE*(flat % @board_size), BLKSIZE*(flat / @board_size) ]
 				@blocks[get_board(y, x)].blit @screen, rct
 			end
 		end
@@ -218,13 +219,40 @@ class Game
 
 		@move_made = false
 		workboard = workboard.map { |a| shake(a) }
+		if @move_made
+			@moves += 1
+		end
 
 		@board = untranslate_arrays(workboard, orientation, direction)
 	end
 
 	def game_over
 		puts "Your highest tile was: " + DISPLAY[@board.max]
-		puts "Your score: " + (@board.inject { |sum, x| sum + ((x>0)?(2**x):0) }).to_s
+		puts "Moves: " + @moves.to_s
+		score = (@board.inject { |sum, x| sum + ((x>0)?(2**x):0) })
+		puts "Your score: " + score.to_s
+		if score > $highscore
+			puts "Personal record!"
+			$highscore = score
+			File.open("highscore", "w") { |f| f.puts score.to_s }
+		end
+	end
+
+	def check_game_over
+		res = true
+		bs = @board_size
+		(1..bs).each do |x|
+			(1..bs-1).each do |y|
+				if get_board(x,y) == 0 or
+					get_board(x,y) == get_board(x,y+1) or
+					get_board(y,x) == get_board(y+1,x) then
+					res = false
+					break
+				end
+			end
+			break if not res
+		end
+		res
 	end
 
 	def launch
@@ -238,6 +266,9 @@ class Game
 			end
 			if @move_made
 				generate_new
+				#if check_game_over
+					#break
+				#end
 			end
 		end
 		game_over
@@ -246,11 +277,10 @@ end
 
 # main
 if __FILE__ == $0
-
-	#include Rubygame
+	File.open("highscore", "r") { |f| $highscore = f.gets.chomp.to_i }
 
 	TTF.setup
-	$font = TTF.new "/usr/share/fonts/TTF/Monaco_Linux.ttf", 20
+	$font = TTF.new "/usr/share/fonts/TTF/Monaco_Linux.ttf", 36
 
 	@screen = Screen.open [400, 400]
 	@screen.title = "2048"
