@@ -33,6 +33,8 @@ class Game
 	# Options may contain a Hash in the form:
 	#     { board_size: 5 }
 	def initialize (options)
+		File.open("highscore", "r") { |f| $highscore = f.gets.chomp.to_i }
+
 		# If undefined, @board_size will default to 4
 		@board_size = options[:board_size] || 4
 
@@ -87,10 +89,31 @@ class Game
 				break
 			end
 			if @move_made
-				if not generate_new
-					break
-				end
+				generate_new
 				update_stats
+			end
+		end
+		Rubygame.quit
+		game_over
+	end
+
+	def test_game
+		$c = 0
+		generate_new
+		done = false
+		while not done
+			show_board
+			$c = ($c + 1) % 4
+			#$c = rand(0..3)
+			shake_board [:north, :east, :south, :west][$c]
+			if @move_made
+				generate_new
+				update_stats
+			end
+			@event_queue.each do |e|
+				if e.is_a? Events::KeyPressed and e.key == :escape
+					done = true
+				end
 			end
 		end
 		Rubygame.quit
@@ -368,9 +391,7 @@ end
 
 # main
 if __FILE__ == $0
-	File.open("highscore", "r") { |f| $highscore = f.gets.chomp.to_i }
-
-
 	game = Game.new board_size: 4
 	game.launch
+	# game.test_game
 end
