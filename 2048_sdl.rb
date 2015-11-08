@@ -1,5 +1,7 @@
 #!/usr/bin/env ruby
 
+# normally require 'rubygame' would suffice;
+# this is what worked on my arch linux VM
 require 'rubygems'
 require 'rubygame/main'
 require 'rubygame/shared'
@@ -25,23 +27,34 @@ require 'color'
 
 include Rubygame
 
-BLKSIZE = 100
-
 class Game
-	attr_reader :board_size, :board
+	# Size of a block on screen
+	BLKSIZE = 100
+	# Size of a statistics block on screen
+	STATBLKOUTERWIDTH = 25
+	# Size of a statistics block on screen
+	STATBLKINNERWIDTH = 22
 
+	# ORIENTATIONS hash is used to translate 4
+	# swiping directions into symbols :col or :row
+	# See +shake_board+, +translate_arrays+, +shake+
 	ORIENTATIONS = {
 		north: :col,
 		south: :col,
 		east:  :row,
 		west:  :row
 	}
+
+	# DIRECTIONS hash is used to translate 4
+	# swiping directions into symbols :pos or :neg
+	# See shake_board, translate_arrays, shake
 	DIRECTIONS = {
 		north: :pos,
 		west:  :pos,
 		south: :neg,
 		east:  :neg
 	}
+
 	KEY_TRANSLATE = {
 		left:  :west,
 		right: :east,
@@ -52,27 +65,33 @@ class Game
 	def initialize (options)
 		@board_size = options[:board_size] || 4
 
+		@empty_spots = Array.new
+		@stat_block = nil
+		@board = Array.new(@board_size**2) { 0 }
+		@moves = 0
+		@stats_sorted = [ [ "   2", [ 1, 1 ] ] ]
+
 		TTF.setup
 		$font = TTF.new "/usr/share/fonts/TTF/Monaco_Linux.ttf", 36
 
-		@screen = Screen.open [400, 410]
+		@screen = Screen.open [@board_size*BLKSIZE, @board_size*BLKSIZE+10]
 		@screen.title = "2048"
 
 		blkcnt = @board_size**2-1
 		@blocks = Array.new(blkcnt) { Surface.new [BLKSIZE, BLKSIZE] }
 		@colors = Array.new(blkcnt)
-		@empty_surface = Surface.new [400, 16]
+		@empty_surface = Surface.new [@board_size*BLKSIZE, 16]
 
 		@blocks.each_with_index do |sfc, i|
 			#hue = 360.0 - i.to_f / blkcnt * 360.0
 			hue = (i * 67) % 360
 			amt = i.to_f/blkcnt
-			c = Color::HSL.new(  hue,							# kleur
-										(i==0)?10:80+10.0*amt,	# hoeveelheid kleur
-										50+(25.0*amt)).to_rgb	# zwart naar wit
+			c = Color::HSL.new(  hue,							# what color
+										(i==0)?10:80+10.0*amt,	# 'amount of color'
+										50+(25.0*amt)).to_rgb	# black to white
 			color = [ c.red, c.green, c.blue ]
 			@colors[i] = color
-			sfc.draw_box_s [10, 10], [90, 90], color
+			sfc.draw_box_s [10, 10], [BLKSIZE-10, BLKSIZE-10], color
 
 			if i > 0
 				txt = $font.render_utf8 (2**i).to_s, true, [0, 0, 0]
@@ -85,12 +104,6 @@ class Game
 
 		@event_queue = EventQueue.new
 		@event_queue.enable_new_style_events
-
-		@empty_spots = Array.new
-		@stat_block = nil
-		@board = Array.new(@board_size**2) { 0 }
-		@moves = 0
-		@stats_sorted = [ [ "   2", [ 1, 1 ] ] ]
 	end
 
 	def set_x_y (x, y, val)
@@ -120,19 +133,15 @@ class Game
 		i >= 0 && i < (@board_size**2)
 	end
 
-	def full_range
-		(0..(@board_size**2-1))
-	end
-
 	def show_board
 		# draw stats
 		@empty_surface.blit @screen, @empty_surface.make_rect
 		@stats_sorted.each do |a|
 			tileno, amt = a[1][0], a[1][1]
-			@stat_block = Surface.new [22, amt*2]
-			@stat_block.draw_box_s [0, 0], [22, amt*2], @colors[tileno]
+			@stat_block = Surface.new [STATBLKINNERWIDTH, amt*2]
+			@stat_block.draw_box_s [0, 0], [STATBLKINNERWIDTH, amt*2], @colors[tileno]
 			rect = @stat_block.make_rect
-			rect.topleft = [ 2+25*tileno, 2 ]
+			rect.topleft = [ 2+STATBLKOUTERWIDTH*tileno, 2 ]
 			@stat_block.blit @screen, rect
 		end
 
